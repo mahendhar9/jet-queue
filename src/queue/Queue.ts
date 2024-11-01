@@ -48,7 +48,7 @@ export class Queue<T = any> extends EventEmitter {
       name,
       data,
       options: { ...this.defaultJobOptions, ...options },
-      timestamp: Date.now(),
+      createdAt: Date.now(),
       status: options.delay ? 'delayed' : 'waiting',
       attemptsMade: 0,
     };
@@ -74,13 +74,17 @@ export class Queue<T = any> extends EventEmitter {
     const jobData = await this.client.hget(this.getQueueKey(`job:${jobId}`), 'data');
 
     if (!jobData) {
-      return null;
+      throw new JobError(`Job with id ${jobId} not found`);
     }
 
     return JSON.parse(jobData);
   }
 
   async removeJob(jobId: string): Promise<void> {
+    const exists = await this.getJob(jobId);
+    if (!exists) {
+      return;
+    }
     const multi = this.client.multi();
 
     //Remove from all possible states

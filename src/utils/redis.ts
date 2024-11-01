@@ -1,6 +1,7 @@
 import IORedis from 'ioredis';
 import { QueueError } from '../errors/index.js';
 import type { QueueOptions } from '../types/index.js';
+import { moveToActive, processDelayed } from './scripts.js';
 
 export class RedisConnection {
   private static instances: Map<string, IORedis> = new Map();
@@ -18,6 +19,16 @@ export class RedisConnection {
       password: options.connection?.password,
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+    });
+
+    client.defineCommand('moveToActive', {
+      numberOfKeys: 3,
+      lua: moveToActive,
+    });
+
+    client.defineCommand('processDelayed', {
+      numberOfKeys: 2,
+      lua: processDelayed,
     });
 
     try {

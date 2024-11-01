@@ -11,3 +11,10 @@ export class JobError extends Error {
     this.name = 'JobError';
   }
 }
+
+export class WorkerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WorkerError';
+  }
+}

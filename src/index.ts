@@ -1,57 +1,140 @@
 import { Queue } from './queue/Queue.js';
-
-// Define an interface for your job data type
-interface EmailJob {
-  to: string;
-  subject: string;
-  body: string;
-}
+import { Worker } from './worker/Worker.js';
 
 async function main() {
   try {
-    // Create a new queue instance
-    const emailQueue = new Queue<EmailJob>('email-queue', {
+    // Create a queue instance
+    const queue = new Queue('email-queue', {
       prefix: 'myapp',
+      connection: {
+        host: 'localhost',
+        port: 6379,
+      },
       defaultJobOptions: {
         attempts: 3,
         backoff: {
-          type: 'exponential',
+          type: 'fixed',
           delay: 1000,
         },
+        timeout: 5000,
       },
     });
 
     // Wait for queue to be ready
-    await new Promise((resolve) => emailQueue.once('ready', resolve));
+    await new Promise((resolve) => queue.once('ready', resolve));
+    console.log('Queue is ready');
 
-    // Add a job to the queue
-    const job = await emailQueue.add(
-      'send-welcome-email',
+    // Create a worker to process jobs
+    const worker = new Worker(
+      'email-queue',
       {
-        to: 'user@example.com',
-        subject: 'Welcome to Our Platform!',
-        body: 'Thank you for joining us.',
+        prefix: 'myapp',
+        connection: {
+          host: 'localhost',
+          port: 6379,
+        },
       },
       {
-        delay: 5000, // 5 second delay
+        concurrency: 2,
+        maxJobsPerWorker: 20,
       }
     );
 
-    console.log('Job added:', job.id);
+    // Add more detailed worker logging
+    worker.on('ready', () => {
+      console.log('Worker is ready to process jobs');
+    });
 
-    // Get job status
-    const jobStatus = await emailQueue.getJob(job.id);
-    console.log('Job status:', jobStatus?.status);
+    worker.on('error', (error) => {
+      console.error('Worker error:', error);
+    });
 
-    // Get queue length
-    const queueLength = await emailQueue.count();
-    console.log('Queue length:', queueLength);
+    // Wait for worker to be ready
+    await new Promise((resolve) => worker.once('ready', resolve));
 
-    // Close the queue when done
-    await emailQueue.close();
+    // Job processing
+    worker.process(async (job) => {
+      console.log('=== Starting job processing ===');
+      console.log('Processing job:', job.id);
+      console.log('Job data:', job.data);
+
+      console.log('Attempting to send email...');
+      try {
+        await simulateEmailSending(job.data);
+        console.log('Email sent successfully for job:', job.id);
+        return { sent: true, timestamp: new Date() };
+      } catch (error) {
+        console.log('Email sending failed for job:', job.id);
+        throw error;
+      }
+    });
+
+    // Add event listeners to worker
+    worker.on('processing', (job) => {
+      console.log(`Started processing job ${job.id}`);
+    });
+
+    worker.on('failed', (job, error) => {
+      console.log(`Job ${job.id} failed:`, error.message);
+    });
+
+    worker.on('retrying', (job) => {
+      console.log(`Retrying job ${job.id}, attempt ${job.attemptsMade}`);
+    });
+
+    // Add different types of jobs to the queue
+    console.log('Adding jobs to queue...');
+    const regularJob = await queue.add('send-welcome', {
+      to: 'user@example.com',
+      template: 'welcome',
+      data: { name: 'John' },
+    });
+    console.log('Added regular job:', regularJob.id);
+
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Add 500ms delay
+
+    const delayedJob = await queue.add(
+      'send-reminder',
+      {
+        to: 'user@example.com',
+        template: 'reminder',
+        data: { event: 'Meeting' },
+      },
+      {
+        delay: 1000,
+      }
+    );
+    console.log('Added delayed job:', delayedJob.id);
+
+    // Monitor queue size
+    const interval = setInterval(async () => {
+      const count = await queue.count();
+      console.log('Current queue size:', count);
+    }, 1000);
+
+    // Keep the process running
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+    clearInterval(interval);
   } catch (error) {
     console.error('Error:', error);
   }
+}
+
+// Helper function to simulate email sending
+async function simulateEmailSending(data: any): Promise<void> {
+  const randomTime = Math.random() * 100;
+  const shouldFail = Math.random() < 0.1;
+
+  await new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (shouldFail) {
+        reject(new Error('Failed to send email'));
+      } else {
+        console.log('Email sent:', data);
+        resolve(void 0);
+      }
+    }, randomTime);
+  });
 }
 
 main();

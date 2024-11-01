@@ -18,7 +18,8 @@ export interface Job<T = any> {
   name: string;
   data: T;
   options: JobOptions;
-  timestamp: number;
+  createdAt: number;
+  startedAt?: number;
   status: JobStatus;
   returnValue?: any;
   failedReason?: string;
@@ -40,3 +41,5 @@ export interface WorkerOptions {
   concurrency?: number;
   maxJobsPerWorker?: number;
 }
+
+export type ProcessCallbackFunction<T = any> = (job: Job<T>) => Promise<any>;
